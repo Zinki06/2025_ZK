@@ -1,0 +1,755 @@
+openapi: 3.0.0
+info:
+  title: Gachitda API
+  version: 1.0.0
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
+paths:
+  /api/auth/email:
+    post:
+      tags:
+        - MailVerification
+      summary: 이메일 인증 요청
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.ac.kr
+      responses:
+        '200':
+          description: Verification email sent successfully
+        '400':
+          description: Invalid request - missing or invalid email
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                invalid_request:
+                  value:
+                    error: INVALID_REQUEST
+                invalid_email:
+                  value:
+                    error: INVALID_EMAIL
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+        '409':
+          description: EMAIL_ALREADY_CONNECTED
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                EMAIL_ALREADY_CONNECTED:
+                  value:
+                    error: EMAIL_ALREADY_CONNECTED
+        '500':
+          description: Internal server error - failed to send email
+  /api/auth/email/verify:
+    post:
+      tags:
+        - MailVerification
+      summary: 이메일 인증 코드 확인
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: 인증 코드 확인 성공
+        '400':
+          description: Invalid request - missing or invalid code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                invalid_request:
+                  value:
+                    error: INVALID_REQUEST
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+        '422':
+          description: Verification code expired or no verification in progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                code_expired:
+                  value:
+                    error: CODE_EXPIRED
+                no_verification_pending:
+                  value:
+                    error: NO_VERIFICATION_PENDING
+  /api/noti/subscription:
+    post:
+      tags:
+        - Subscription
+      summary: 웹 알림 허용
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscription:
+                  type: object
+      responses:
+        '200':
+          description: 구독 저장 성공
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+  /api/noti/sendpush:
+    post:
+      tags:
+        - Subscription
+      summary: 웹 알림 전송
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+      responses:
+        '200':
+          description: 푸시 알림 전송 성공
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+  /api/user:
+    get:
+      tags:
+        - User
+      summary: 유저의 기본 정보
+      responses:
+        '200':
+          description: 기본 정보
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nickname:
+                    type: string
+                  profileimage:
+                    type: string
+                  kakaomail:
+                    type: string
+                  email:
+                    type: string
+                  role:
+                    type: string
+                  subscription:
+                    type: boolean
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+  /api/user/{userId}:
+    get:
+      tags:
+        - User
+      summary: 특정 유저의 간단한 정보
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: 조회할 글의 postId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 기본 정보
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nickname:
+                    type: string
+                  profileimage:
+                    type: string
+                  kakaomail:
+                    type: string
+                  email:
+                    type: string
+        '400':
+          description: INVALID_USERID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                INVALID_USERID:
+                  value:
+                    error: INVALID_USERID
+  /api/role/my:
+    post:
+      tags:
+        - Role
+      summary: 자신의 역할 세팅
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+      responses:
+        '200':
+          description: 저장 성공
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+  /api/post:
+    post:
+      summary: 글 작성
+      tags:
+        - Post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                subtitle:
+                  type: string
+                category:
+                  type: string
+                Description:
+                  type: string
+                address:
+                  type: string
+                teachAt:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: 글 작성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  postId:
+                    type: string
+                    description: 생성된 글의 ID
+        '400':
+          description: MISSING_REQUIRED_FIELDS
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                MISSING_REQUIRED_FIELDS:
+                  value:
+                    error: MISSING_REQUIRED_FIELDS
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+  /api/post/{postId}/apply:
+    post:
+      tags:
+        - Post
+      summary: 특정 글에 신청하기
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          description: 신청할 글의 postId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 신청 성공
+        '400':
+          description: postId오류
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                invalid_postId:
+                  value:
+                    error: INVALID_POSTID
+        '401':
+          description: accessToken오류
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+  /api/post/{postId}/match:
+    post:
+      tags:
+        - Post
+      summary: 매칭하기
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          description: 매칭할 글의 postId
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  userId:
+                    type: string
+      responses:
+        '200':
+          description: 매칭 완료
+        '400':
+          description: 입력값 오류
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                invalid_postId:
+                  value:
+                    error: INVALID_POSTID
+                invalid_userId:
+                  value:
+                    error: INVALID_USERID
+        '401':
+          description: accessToken오류
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+        '403':
+          description: 작성자 아님
+        '404':
+          description: 글 없음
+  /api/post/{postId}:
+    get:
+      tags:
+        - Post
+      summary: 특정 글 상세 조회
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          description: 조회할 글의 postId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 글의 상세 정보
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  writerName:
+                    type: string
+                  writerprofileimage:
+                    type: string
+                  writerEmail:
+                    type: string
+                  appliedTalents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        userId:
+                          type: string
+                        nickname:
+                          type: string
+                        profileimage:
+                          type: string
+                        email:
+                          type: string
+                  matchedTalents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        userId:
+                          type: string
+                        nickname:
+                          type: string
+                        profileimage:
+                          type: string
+                        email:
+                          type: string
+                  category:
+                    type: string
+                  title:
+                    type: string
+                  subtitle:
+                    type: string
+                  Description:
+                    type: string
+                  address:
+                    type: string
+                  status:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+                  teachAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: INVALID_POSTID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                invalid_postId:
+                  value:
+                    error: INVALID_POSTID
+  /api/posts:
+    get:
+      tags:
+        - Post
+      summary: 모든 글 리스트
+      responses:
+        '200':
+          description: 모든 글의 간단한 정보 & postId
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    postId:
+                      type: string
+                    writerId:
+                      type: string
+                    category:
+                      type: string
+                    title:
+                      type: string
+                    subtitle:
+                      type: string
+                    appliedTalents:
+                      type: integer
+                    address:
+                      type: string
+                    status:
+                      type: string
+                    createdAt:
+                      type: string
+                      format: date-time
+                    teachAt:
+                      type: string
+                      format: date-time
+  /api/posts/my:
+    get:
+      tags:
+        - User
+        - Post
+      summary: 유저가 쓴/신청한 포스트 리스트
+      responses:
+        '200':
+          description: 포스트 ID & 간단한 정보
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  writtenPosts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        postId:
+                          type: string
+                        category:
+                          type: string
+                        title:
+                          type: string
+                        subtitle:
+                          type: string
+                        appliedTalents:
+                          type: integer
+                        address:
+                          type: string
+                        status:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+                        teachAt:
+                          type: string
+                          format: date-time
+                  appliedPosts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        postId:
+                          type: string
+                        writerName:
+                          type: string
+                        writerprofileimage:
+                          type: string
+                        writerEmail:
+                          type: string
+                        category:
+                          type: string
+                        title:
+                          type: string
+                        address:
+                          type: string
+                        status:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+                        teachAt:
+                          type: string
+                          format: date-time
+        '401':
+          description: INVALID_ACCESS_TOKEN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missing_authorization_header:
+                  value:
+                    error: MISSING_AUTHORIZATION_HEADER
+                invalid_authorization_format:
+                  value:
+                    error: INVALID_AUTHORIZATION_FORMAT
+                invalid_access_token:
+                  value:
+                    error: INVALID_ACCESS_TOKEN
+  /api/auth/access-token:
+    get:
+      tags:
+        - AccessToken
+      summary: Access Token 발급
+      parameters:
+        - in: header
+          name: Cookie
+          schema:
+            type: string
+          required: true
+          example: refreshtoken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDI2NzM3NDc0NywiaWF0IjoxNzQ3NzI3NzU4LCJleHAiOjE3NTAzMTk3NTh9.mCwFrDh6-tjQ4JxKAgUdtXV89Lp3FZ5sZbu4aiRP56E
+      responses:
+        '200':
+          description: Access Token 발급 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        '401':
+          description: 재 로그인 필요
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                no_refresh_token:
+                  value:
+                    error: NO_REFRESH_TOKEN
+                invalid_refresh_token:
+                  value:
+                    error: INVALID_REFRESH_TOKEN
+  /logout:
+    post:
+      tags:
+        - Account
+      summary: 로그아웃

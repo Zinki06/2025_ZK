@@ -1,0 +1,7 @@
+Method,Size (MB),Inference Time (ms),Speedup,Size Reduction
+Original,66.40,15.20,1.00x,0%
+Dynamic Quantization,18.20,8.70,1.75x,72.6%
+Pruning 10%,66.40,14.01,1.08x,10% params
+Pruning 30%,66.40,12.11,1.26x,30% params
+Pruning 50%,66.40,9.81,1.55x,50% params
+Pruning 70%,66.40,7.48,2.03x,70% params
