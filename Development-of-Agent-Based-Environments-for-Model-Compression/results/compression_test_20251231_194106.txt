@@ -1,0 +1,16 @@
+Model Compression Test Results
+==============================
+Model: distilbert-base-uncased
+Compression: quantization
+Quantization bits: 8
+
+Results:
+Size reduction: 64.1%
+Parameter reduction: 64.1%
+Speed improvement: 3.81x
+
+Detailed Metrics:
+Original size: 253.16 MB
+Compressed size: 91.00 MB
+Original inference time: 7.15 ms
+Compressed inference time: 1.87 ms

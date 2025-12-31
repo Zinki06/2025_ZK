@@ -1,5 +1,25 @@
 import os
 import io
+import threading
+import sys
+import ctypes
+from ctypes import util
+
+# --- ALSA Error Suppression (Linux) ---
+# PyAudio often prints annoying text to stderr on Linux. This suppresses it.
+try:
+    asound_lib_name = util.find_library('asound')
+    if asound_lib_name:
+        asound = ctypes.cdll.LoadLibrary(asound_lib_name)
+        # C-type for the error handler
+        ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
+        def py_error_handler(filename, line, function, err, fmt):
+            pass
+        c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
+        asound.snd_lib_error_set_handler(c_error_handler)
+except Exception:
+    pass # If we can't suppress, we just live with the noise.
+
 import customtkinter as ctk
 from tkinter import messagebox
 from PIL import Image, ImageTk
@@ -8,230 +28,281 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types as genai_types
 
-# 설정 상수
-PRIMARY_COLOR = "#017DB3"
-SECONDARY_COLOR = "#8CD4EA"
-BACKGROUND_COLOR = "#ffdfdf"
-PANEL_COLOR = "#F0FAFC"
-ACCENT_COLOR = "#F7A6A6"
-
-WINDOW_WIDTH = 1200
-WINDOW_HEIGHT = 800
-INPUT_HEIGHT = 400
-OUTPUT_HEIGHT = 200
-BUTTON_WIDTH = 180
-BUTTON_HEIGHT = 50
-
-# 환경 변수 로드
+# Load environment variables
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    print("오류: .env 파일에 GEMINI_API_KEY를 설정하세요.")
-    exit(1)
 
-generative_client = genai.Client(api_key=GEMINI_API_KEY)
-
-
-# 전역 변수
-app_state = {
-    'input_text': None,
-    'output_text': None,
-    'image_label': None,
-    'gender_var': None
+# Configuration
+THEME_COLORS = {
+    "primary": "#8FB8DE",       # Soft Pastel Blue
+    "secondary": "#9A8FDE",     # Soft Pastel Purple
+    "accent": "#DE8FA5",        # Soft Pastel Pink
+    "background": "#FDF6F8",    # Very light pinkish white
+    "panel": "#FFFFFF",         # White
+    "text": "#555555",          # Dark Gray for text
+    "text_light": "#FFFFFF"     # White text
 }
 
-def create_main_window():
-    """메인 윈도우 생성"""
-    app = ctk.CTk()
-    app.title("그림일기 체험기")
-    app.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-    ctk.set_appearance_mode("light")
-    app.configure(fg_color=BACKGROUND_COLOR)
-    return app
+FONTS = {
+    "header": ("Malgun Gothic", 24, "bold"),
+    "subheader": ("Malgun Gothic", 16, "bold"),
+    "body": ("Malgun Gothic", 14),
+    "button": ("Malgun Gothic", 15, "bold")
+}
 
-def create_main_frame(app):
-    """메인 프레임 생성"""
-    outer_frame = ctk.CTkFrame(app, fg_color=BACKGROUND_COLOR)
-    outer_frame.pack(expand=True)
-    
-    main_frame = ctk.CTkFrame(outer_frame, corner_radius=20, fg_color=BACKGROUND_COLOR)
-    main_frame.grid(row=0, column=0, padx=40, pady=60)
-    main_frame.grid_columnconfigure(0, weight=1)
-    main_frame.grid_columnconfigure(1, weight=1)
-    return main_frame
+class PictureDiaryApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-def create_input_panel(main_frame):
-    """입력 패널 생성"""
-    left_frame = ctk.CTkFrame(main_frame, corner_radius=20, fg_color=PANEL_COLOR)
-    left_frame.grid(row=0, column=0, sticky="nsew", padx=40, pady=30)
-    
-    ctk.CTkLabel(left_frame, text="말하거나 글로 적어서 일기를 그림으로 바꿔보세요", 
-                font=("맑은 고딕", 18, "bold"), text_color="black").pack(pady=20)
-    
-    input_text = ctk.CTkTextbox(left_frame, height=INPUT_HEIGHT, width=700, 
-                               font=("맑은 고딕", 15, "bold"), corner_radius=10, 
-                               border_width=1, border_color="#CCCCCC", text_color="black")
-    input_text.pack(padx=30, pady=15, fill="x")
-    app_state['input_text'] = input_text
-    
-    button_frame = ctk.CTkFrame(left_frame, fg_color="transparent")
-    button_frame.pack(pady=15)
-    
-    ctk.CTkButton(button_frame, text="일기로 변환", command=transform_text,
-                 width=BUTTON_WIDTH, height=BUTTON_HEIGHT, fg_color=SECONDARY_COLOR, 
-                 text_color="black", hover_color=PRIMARY_COLOR, 
-                 font=("맑은 고딕", 15, "bold")).grid(row=0, column=0, padx=10)
-    
-    ctk.CTkButton(button_frame, text="그림 생성", command=generate_image,
-                 width=BUTTON_WIDTH, height=BUTTON_HEIGHT, fg_color=SECONDARY_COLOR, 
-                 text_color="black", hover_color=PRIMARY_COLOR, 
-                 font=("맑은 고딕", 15, "bold")).grid(row=0, column=1, padx=10)
-    
-    ctk.CTkButton(button_frame, text="말로 그림 생성", command=speech_to_image,
-                 width=BUTTON_WIDTH, height=BUTTON_HEIGHT, fg_color=SECONDARY_COLOR, 
-                 text_color="black", hover_color=PRIMARY_COLOR, 
-                 font=("맑은 고딕", 15, "bold")).grid(row=0, column=2, padx=10)
-    
-    ctk.CTkLabel(left_frame, text="아이 성별 선택:", 
-                font=("맑은 고딕", 15, "bold"), text_color="black").pack(pady=(15, 5))
-    gender_var = ctk.StringVar(value="남자")
-    app_state['gender_var'] = gender_var
-    gender_menu = ctk.CTkOptionMenu(left_frame, variable=gender_var, values=["남자", "여자"], 
-                                   fg_color=ACCENT_COLOR, text_color="white", 
-                                   button_color=PRIMARY_COLOR)
-    gender_menu.pack(pady=(0, 20))
-    
-    return left_frame
+        # Basic Window Setup
+        self.title("AI 그림일기 체험")
+        self.geometry("1200x800")
+        ctk.set_appearance_mode("light")
+        self.configure(fg_color=THEME_COLORS["background"])
 
-def create_output_panel(main_frame):
-    """출력 패널 생성"""
-    right_frame = ctk.CTkFrame(main_frame, corner_radius=20, fg_color=PANEL_COLOR)
-    right_frame.grid(row=0, column=1, sticky="nsew", padx=40, pady=30)
+        # API Setup
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
+        self.client = None
+        if self.gemini_key:
+            try:
+                self.client = genai.Client(api_key=self.gemini_key)
+            except Exception as e:
+                print(f"API Init Error: {e}")
+
+        # State
+        self.gender_var = ctk.StringVar(value="남자")
+        self.is_processing = False
+
+        # Build UI
+        self.setup_ui()
+
+    def setup_ui(self):
+        """Builds the main UI layout"""
+        # Main Container with padding
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.pack(fill="both", expand=True, padx=40, pady=40)
+
+        # Header
+        self.header_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.header_frame.pack(fill="x", pady=(0, 20))
+        
+        self.title_label = ctk.CTkLabel(
+            self.header_frame, 
+            text="✨ AI 그림일기 스튜디오 ✨", 
+            font=FONTS["header"],
+            text_color=THEME_COLORS["secondary"]
+        )
+        self.title_label.pack()
+
+        # Content Area (Split Left/Right)
+        self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.content_area.pack(fill="both", expand=True)
+        
+        self.content_area.grid_columnconfigure(0, weight=1)
+        self.content_area.grid_columnconfigure(1, weight=1)
+
+        # Left Panel (Input)
+        self.create_left_panel()
+
+        # Right Panel (Output)
+        self.create_right_panel()
+
+    def create_left_panel(self):
+        self.left_panel = ctk.CTkFrame(self.content_area, fg_color=THEME_COLORS["panel"], corner_radius=20)
+        self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 20))
+        
+        # Inner Padding Layer
+        inner = ctk.CTkFrame(self.left_panel, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=30, pady=30)
+
+        # Instruction
+        ctk.CTkLabel(inner, text="1. 오늘의 이야기를 들려주세요", font=FONTS["subheader"], text_color=THEME_COLORS["text"]).pack(anchor="w", pady=(0, 10))
+
+        # Text Input
+        self.input_text = ctk.CTkTextbox(
+            inner, 
+            height=200, 
+            font=FONTS["body"], 
+            fg_color="#F8F9FA", 
+            border_width=1, 
+            border_color="#E0E0E0",
+            text_color="#333333"
+        )
+        self.input_text.pack(fill="x", pady=(0, 20))
+
+        # Options
+        ctk.CTkLabel(inner, text="2. 주인공 설정", font=FONTS["subheader"], text_color=THEME_COLORS["text"]).pack(anchor="w", pady=(0, 10))
+        
+        gender_frame = ctk.CTkFrame(inner, fg_color="transparent")
+        gender_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkRadioButton(gender_frame, text="남자 아이", variable=self.gender_var, value="남자", font=FONTS["body"],
+                           fg_color=THEME_COLORS["primary"], text_color=THEME_COLORS["text"]).pack(side="left", padx=(0, 20))
+        ctk.CTkRadioButton(gender_frame, text="여자 아이", variable=self.gender_var, value="여자", font=FONTS["body"],
+                           fg_color=THEME_COLORS["accent"], text_color=THEME_COLORS["text"]).pack(side="left")
+
+        # Buttons
+        ctk.CTkLabel(inner, text="3. 마법 부리기", font=FONTS["subheader"], text_color=THEME_COLORS["text"]).pack(anchor="w", pady=(0, 10))
+        
+        self.btn_speech = ctk.CTkButton(
+            inner, text="🎤 말로 입력하기", 
+            command=self.start_speech_recognition,
+            font=FONTS["button"],
+            fg_color=THEME_COLORS["secondary"], hover_color=THEME_COLORS["primary"],
+            height=50
+        )
+        self.btn_speech.pack(fill="x", pady=(0, 10))
+
+        self.btn_generate = ctk.CTkButton(
+            inner, text="🎨 그림일기 만들기", 
+            command=self.start_generation,
+            font=FONTS["button"],
+            fg_color=THEME_COLORS["primary"], hover_color=THEME_COLORS["secondary"],
+            height=50
+        )
+        self.btn_generate.pack(fill="x")
+
+    def create_right_panel(self):
+        self.right_panel = ctk.CTkFrame(self.content_area, fg_color=THEME_COLORS["panel"], corner_radius=20)
+        self.right_panel.grid(row=0, column=1, sticky="nsew", padx=(20, 0))
+
+        # Inner Padding Layer
+        inner = ctk.CTkFrame(self.right_panel, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=30, pady=30)
+
+        # Image Display Area
+        self.image_display = ctk.CTkLabel(
+            inner, 
+            text="그림이 여기에 나타나요!", 
+            font=FONTS["body"], 
+            fg_color="#F0F0F0", 
+            corner_radius=15
+        )
+        self.image_display.pack(fill="both", expand=True, pady=(0, 20))
+
+        # Diary Text Output
+        self.output_text = ctk.CTkTextbox(
+            inner, 
+            height=150, 
+            font=("Handon3gyeopsal300g", 16) if "Handon3gyeopsal300g" in os.getenv("FONTS", "") else FONTS["body"], # Fallback
+            fg_color="#FDF6F8", 
+            border_width=0, 
+            text_color="#333333",
+            activate_scrollbars=True
+        )
+        self.output_text.pack(fill="x")
+        self.output_text.insert("1.0", "AI가 작성한 일기 내용이 여기에 표시됩니다.")
+        self.output_text.configure(state="disabled")
+
+    def start_speech_recognition(self):
+        threading.Thread(target=self._run_stt, daemon=True).start()
+
+    def _run_stt(self):
+        recognizer = sr.Recognizer()
+        try:
+            # First check if we can even access a microphone
+            # This 'with' block is where ALSA errors usually happen if probed
+            with sr.Microphone() as source:
+                self.after(0, lambda: self.btn_speech.configure(text="👂 듣고 있어요...", state="disabled"))
+                audio = recognizer.listen(source, timeout=5)
+                
+            text = recognizer.recognize_google(audio, language="ko-KR")
+            self.after(0, lambda: self._update_input_text(text))
+            
+        except OSError as e:
+            print(f"STT Device Error: {e}")
+            self.after(0, lambda: messagebox.showwarning("마이크 없음", "마이크를 찾을 수 없습니다. 텍스트로 입력해주세요."))
+        except Exception as e:
+            print(f"STT Error: {e}")
+            self.after(0, lambda: messagebox.showerror("오류", "음성 인식에 실패했습니다. (마이크 연결을 확인하세요)"))
+        finally:
+             self.after(0, lambda: self.btn_speech.configure(text="🎤 말로 입력하기", state="normal"))
     
-    ctk.CTkLabel(right_frame, text="변환된 일기 내용:", 
-                font=("맑은 고딕", 18, "bold"), text_color="black").pack(pady=(20, 10))
-    
-    output_text = ctk.CTkTextbox(right_frame, height=OUTPUT_HEIGHT, width=600, 
-                                font=("맑은 고딕", 13), corner_radius=10, 
-                                border_width=1, border_color="#CCCCCC", text_color="black")
-    output_text.pack(padx=30, pady=10, fill="x")
-    output_text.configure(state="disabled")
-    app_state['output_text'] = output_text
-    
-    image_label = ctk.CTkLabel(right_frame, text="")
-    image_label.pack(pady=30)
-    app_state['image_label'] = image_label
-    
-    return right_frame
+    def _update_input_text(self, text):
+        self.input_text.delete("1.0", "end")
+        self.input_text.insert("1.0", text)
 
-def transform_text():
-    """텍스트를 일기 스타일로 변환"""
-    original_content = app_state['input_text'].get("1.0", "end").strip()
-    if not original_content:
-        messagebox.showwarning("경고", "원본 내용을 입력하세요.")
-        return
-    try:
-        transformed_content = call_gemini_for_diary(original_content)
-        update_output_text(transformed_content)
-    except Exception as e:
-        messagebox.showerror("오류", f"텍스트 변환 중 오류 발생: {e}")
+    def start_generation(self):
+        if self.is_processing: return
+        
+        text = self.input_text.get("1.0", "end").strip()
+        if not text:
+            messagebox.showwarning("입력 필요", "일기 내용을 적거나 말해주세요!")
+            return
 
-def call_gemini_for_diary(text: str) -> str:
-    """그림일기 스타일로 텍스트 변환"""
-    prompt = f'다음 텍스트를 5세에서 13세 사이의 아이가 그림일기에 쓸 법한 3~5 문장의 짧은 글로 바꿔줘. 친근하고 쉬운 단어를 사용해줘. 기존 내용에 충실하도록 해줘:\n\n"{text}"'
-    response = generative_client.models.generate_content(
-        model="models/gemini-2.0-flash-exp-image-generation",
-        contents=prompt,
-        config=genai_types.GenerateContentConfig(response_modalities=["TEXT"])
-    )
-    if response.candidates and response.candidates[0].content.parts:
-        return response.candidates[0].content.parts[0].text
-    elif hasattr(response, 'text'):
-        return response.text
-    else:
-        raise Exception("Gemini API로부터 텍스트를 추출할 수 없습니다.")
+        if not self.client:
+             messagebox.showerror("API 오류", "Gemini API 키가 설정되지 않았습니다.")
+             return
 
-def call_gemini_generate(text: str):
-    """이미지 생성 요청"""
-    gender = app_state['gender_var'].get()
-    combined_prompt = (
-        f"다음 문장을 바탕으로 지브리 애니메이션 스타일의 일러스트를 그려줘. "
-        f"문장: \"{text}\"\n\n"
-        f"그림에는 반드시 {gender} 아이가 등장해야 하고, 문장의 내용이 그림으로 잘 전달되어야 해. "
-        f"배경은 몽환적이고 동화 같은 느낌으로, 부드러운 색감과 따뜻한 분위기로 그려줘. "
-        f"글자는 포함하지 말고, 인물은 반드시 1명만 있어야 해."
-    )
-    response = generative_client.models.generate_content(
-        model="models/gemini-2.0-flash-exp-image-generation",
-        contents=combined_prompt,
-        config=genai_types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
-    )
-    text_output = ""
-    image = None
-    for part in response.candidates[0].content.parts:
-        if part.text is not None:
-            text_output += part.text
-        elif part.inline_data is not None:
-            image = Image.open(io.BytesIO(part.inline_data.data))
-    return text_output, image
+        self.is_processing = True
+        self.btn_generate.configure(text="✨ 마법을 부리는 중...", state="disabled")
+        
+        threading.Thread(target=self._process_generation, args=(text,), daemon=True).start()
 
-def show_image(pil_img):
-    """이미지 표시"""
-    img = pil_img.copy()
-    img.thumbnail((700, 700))
-    tk_img = ImageTk.PhotoImage(img)
-    app_state['image_label'].configure(image=tk_img)
-    app_state['image_label'].image = tk_img
+    def _process_generation(self, original_text):
+        try:
+            # 1. Generate Diary Text
+            diary_prompt = f'다음 텍스트를 7세 아이가 쓴 그림일기 스타일로 3문장 이내로 요약해줘. 귀엽고 순수한 말투로:\n\n"{original_text}"'
+            text_resp = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=diary_prompt
+            )
+            diary_text = text_resp.text if text_resp.text else "일기를 쓸 수 없었어요."
 
-def generate_image():
-    """이미지 생성"""
-    original_content = app_state['input_text'].get("1.0", "end").strip()
-    if not original_content:
-        messagebox.showwarning("경고", "원본 내용을 입력하세요.")
-        return
-    try:
-        text, image = call_gemini_generate(original_content)
+            # 2. Generate Image
+            gender = self.gender_var.get()
+            img_prompt = (
+                f"지브리 스튜디오 스타일의 감성적인 일러스트. "
+                f"내용: {original_text}. "
+                f"주인공: {gender} 아이 1명. "
+                f"분위기: 따뜻함, 몽환적, 파스텔 톤. "
+                f"텍스트 금지, 복잡한 디테일 생략."
+            )
+            
+            img_resp = self.client.models.generate_content(
+                model="models/gemini-2.0-flash-exp-image-generation",
+                contents=img_prompt,
+                config=genai_types.GenerateContentConfig(response_modalities=["IMAGE"])
+            )
+            
+            image = None
+            if img_resp.candidates and img_resp.candidates[0].content.parts:
+                for part in img_resp.candidates[0].content.parts:
+                     if part.inline_data:
+                        image = Image.open(io.BytesIO(part.inline_data.data))
+                        break
+
+            # Update UI (Thread-safe)
+            self.after(0, lambda: self._update_results(diary_text, image))
+
+        except Exception as e:
+            print(f"Generation Error: {e}")
+            self.after(0, lambda: messagebox.showerror("오류", f"생성 중 문제가 발생했습니다: {e}"))
+        finally:
+            self.is_processing = False
+            self.after(0, lambda: self.btn_generate.configure(text="🎨 그림일기 만들기", state="normal"))
+
+    def _update_results(self, text, image):
+        # Update Text
+        self.output_text.configure(state="normal")
+        self.output_text.delete("1.0", "end")
+        self.output_text.insert("1.0", text)
+        self.output_text.configure(state="disabled")
+
+        # Update Image
         if image:
-            show_image(image)
-        update_output_text(text)
-    except Exception as e:
-        messagebox.showerror("오류", f"그림 생성 중 오류 발생: {e}")
-
-def speech_to_image():
-    """음성 인식 후 이미지 생성"""
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        messagebox.showinfo("말하기 시작", "이제 말을 시작하세요. 멈추면 자동으로 인식합니다.")
-        audio = recognizer.listen(source)
-    try:
-        spoken_text = recognizer.recognize_google(audio, language="ko-KR")
-        app_state['input_text'].delete("1.0", "end")
-        app_state['input_text'].insert("1.0", spoken_text)
-        generate_image()
-    except sr.UnknownValueError:
-        messagebox.showerror("오류", "음성을 인식할 수 없습니다.")
-    except sr.RequestError as e:
-        messagebox.showerror("오류", f"STT 요청 중 오류 발생: {e}")
-
-
-def update_output_text(text):
-    """출력 텍스트 업데이트"""
-    app_state['output_text'].configure(state="normal")
-    app_state['output_text'].delete("1.0", "end")
-    app_state['output_text'].insert("1.0", text)
-    app_state['output_text'].configure(state="disabled")
-
-def main():
-    """메인 함수"""
-    if not GEMINI_API_KEY or not GEMINI_API_KEY.startswith("AIza"):
-        print("오류: .env 파일에서 유효한 GEMINI_API_KEY를 설정하세요.")
-        return
-    
-    app = create_main_window()
-    main_frame = create_main_frame(app)
-    create_input_panel(main_frame)
-    create_output_panel(main_frame)
-    app.mainloop()
+            # Resize keeping aspect ratio
+            w, h = image.size
+            target_w = 400 # Adjusted for right panel
+            target_h = int(h * (target_w / w))
+            
+            image = image.resize((target_w, target_h), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+            
+            self.image_display.configure(image=photo, text="")
+            self.image_display.image = photo # Keep reference
+        else:
+            self.image_display.configure(text="이미지를 생성하지 못했습니다.")
 
 if __name__ == "__main__":
-    main()
+    app = PictureDiaryApp()
+    app.mainloop()

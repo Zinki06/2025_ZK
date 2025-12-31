@@ -250,7 +250,8 @@ def run_compression_test(model_name, compression_type, **kwargs):
     test_inputs = prepare_test_inputs(tokenizer)
     
     # 원본 모델 복사 (비교용)
-    original_model = type(model)()
+    from transformers import AutoModel
+    original_model = AutoModel.from_config(model.config)
     original_model.load_state_dict(model.state_dict())
     
     # 압축 적용
